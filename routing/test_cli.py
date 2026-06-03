@@ -120,8 +120,24 @@ class TestRunEvaluate(unittest.TestCase):
         run_evaluate("o/n", fetcher=stub_fetcher, auto_invoke=True, out=out)
         self.assertIn("auto-invoke", out.text)
         self.assertIn("not yet implemented", out.text)
-        self.assertIn("Would invoke eng to consume", out.text)
-        self.assertIn("#10", out.text)
+        # R1 (dir->eng) is actuated by eng (SPEC §5.2.2).
+        self.assertIn("eng (consume) #10", out.text)
+
+    def test_auto_invoke_routes_feedback_to_dir_not_eng(self):
+        # Regression: R8/R9 handbacks are actuated by dir, NOT eng (SPEC §5.2.2).
+        feedback = [
+            _md(10, title="onboarding", consumer_count=0),                                    # R1 -> eng
+            _md(60, labels=("initiative", "initiative:challenged"), consumer_count=1),         # R8 -> dir
+            _md(61, labels=("initiative", "initiative:completion-requested"), consumer_count=1),  # R9 -> dir
+        ]
+        out = _Out()
+        run_evaluate("o/n", fetcher=lambda r: feedback, auto_invoke=True, out=out)
+        self.assertIn("eng (consume) #10", out.text)
+        self.assertIn("dir (review R8) #60", out.text)
+        self.assertIn("dir (review R9) #61", out.text)
+        # the feedback issues must NOT be labelled as an eng consume
+        self.assertNotIn("eng (consume) #60", out.text)
+        self.assertNotIn("Would invoke eng to consume", out.text)
 
     def test_idempotent_proposals(self):
         a = run_evaluate("o/n", fetcher=stub_fetcher, out=_Out())
