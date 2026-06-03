@@ -48,7 +48,13 @@ A reference implementation of claude-orch-shell's **metadata-only routing model*
 | R5 | `initiative`, closed | terminal (report) |
 | R6 | `initiative` **and** `directive` co-present | **flag** malformed (checked first) |
 | R7 | Active but missing `## Termination condition` header | **flag** malformed |
+| R8 | `initiative` · open · `initiative:challenged` label | **propose** eng→dir handback (challenge); additive (§3.6) |
+| R9 | `initiative` · open · `initiative:completion-requested` label | **propose** eng→dir handback (completion) |
 | SKIP | not an `initiative` | not claude-orch-shell's concern |
+
+R8/R9 (the upward edge) are produced by `feedback_decisions(md)` and emitted **additively**
+in `evaluate` — a feedback-labelled Initiative is already consumed (R2 by `classify`), but
+its feedback proposal is surfaced alongside, never swallowed.
 
 ## Scope / boundary (what this unit does NOT do)
 
@@ -62,20 +68,23 @@ A reference implementation of claude-orch-shell's **metadata-only routing model*
 ## Verify
 
 ```sh
-python3 -m unittest discover -s routing -p 'test_*.py'   # from repo root — 31 tests
+python3 -m unittest discover -s routing -p 'test_*.py'   # from repo root — 52 tests
 # or individually:
-cd routing && python3 -m unittest test_routing -v        # routing core (21)
+cd routing && python3 -m unittest test_routing -v        # routing core incl. R8/R9 (29)
 cd routing && python3 -m unittest test_fetch -v          # fetcher (10)
+cd routing && python3 -m unittest test_cli -v            # config + orch CLI (13)
 # demos (no gh, no network):
 cd routing && python3 routing.py                          # routing over synthetic metadata
 cd routing && python3 fetch.py                            # fetch (JSON fixture) -> route
 ```
 
-`test_routing.py` (21) pins every routing-table row (R1–R7 + SKIP), the metadata-only
-invariant (input struct exposes no content field; title cannot change a decision),
-evaluation aggregation, idempotency (SPEC §7), and validation. `test_fetch.py` (10) pins the
-`gh`-JSON parsing, the consumer-marker scan across the set (incl. closed consumers), that
-the body is never carried into the metadata, and a fetch→route end-to-end path.
+`test_routing.py` (29) pins every routing-table row (R1–R7 + SKIP **+ R8/R9 feedback**,
+incl. the "challenged-consumed is not silently ignored" case), the metadata-only invariant
+(input struct exposes no content field; title cannot change a decision), evaluation
+aggregation, idempotency (SPEC §7), and validation. `test_fetch.py` (10) pins the `gh`-JSON
+parsing, the consumer-marker scan across the set (incl. closed consumers), that the body is
+never carried into the metadata, and a fetch→route end-to-end path. `test_cli.py` (13) pins
+the config loader and the propose-only `orch evaluate` output.
 
 ## Notes
 

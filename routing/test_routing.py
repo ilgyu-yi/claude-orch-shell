@@ -16,6 +16,7 @@ from routing import (
     Rule,
     classify,
     evaluate,
+    feedback_decisions,
 )
 
 
@@ -151,6 +152,57 @@ class TestEvaluate(unittest.TestCase):
                          [d.number for d in second.proposals])
         # An already-consumed Initiative (R2) never yields a proposal -> no double handoff.
         self.assertNotIn(2, [d.number for d in first.proposals])
+
+
+class TestFeedbackRouting(unittest.TestCase):
+    """The upward eng->dir edge (SPEC §3.6, R8/R9)."""
+
+    def test_R8_challenge_yields_proposal(self):
+        ds = feedback_decisions(md(labels=("initiative", "initiative:challenged")))
+        self.assertEqual([d.rule for d in ds], [Rule.R8_CHALLENGE])
+        self.assertTrue(ds[0].is_proposal)
+
+    def test_R9_completion_yields_proposal(self):
+        ds = feedback_decisions(md(labels=("initiative", "initiative:completion-requested")))
+        self.assertEqual([d.rule for d in ds], [Rule.R9_COMPLETION])
+        self.assertTrue(ds[0].is_proposal)
+
+    def test_both_labels_surface_both(self):
+        ds = feedback_decisions(md(labels=("initiative", "initiative:challenged",
+                                           "initiative:completion-requested")))
+        self.assertEqual(sorted(d.rule.value for d in ds), ["R8", "R9"])
+
+    def test_challenged_consumed_not_silently_ignored(self):
+        # The load-bearing case: a challenged Initiative is already consumed (R2 by
+        # classify), but evaluate must still surface it via R8 (SPEC §3.1 precedence).
+        m = md(10, labels=("initiative", "initiative:challenged"), consumer_count=1)
+        self.assertEqual(classify(m).rule, Rule.R2_IN_PROGRESS)        # base lifecycle
+        res = evaluate([m])
+        self.assertEqual([d.rule for d in res.proposals], [Rule.R8_CHALLENGE])  # surfaced
+
+    def test_malformed_gets_no_feedback(self):
+        # initiative+directive (R6) → no feedback routing.
+        self.assertEqual(feedback_decisions(
+            md(labels=("initiative", "directive", "initiative:challenged"))), ())
+
+    def test_closed_gets_no_feedback(self):
+        self.assertEqual(feedback_decisions(
+            md(state="closed", close_reason="completed",
+               labels=("initiative", "initiative:completion-requested"))), ())
+
+    def test_non_initiative_gets_no_feedback(self):
+        self.assertEqual(feedback_decisions(
+            md(labels=("directive", "initiative:challenged"))), ())
+
+    def test_evaluate_mixes_downward_and_upward(self):
+        repo = [
+            md(1, labels=("initiative",), consumer_count=0),                          # R1 (down)
+            md(2, labels=("initiative", "initiative:challenged"), consumer_count=1),  # R8 (up)
+            md(3, labels=("initiative", "initiative:completion-requested"), consumer_count=1),  # R9 (up)
+        ]
+        res = evaluate(repo)
+        rules = sorted(d.rule.value for d in res.proposals)
+        self.assertEqual(rules, ["R1", "R8", "R9"])
 
 
 class TestValidation(unittest.TestCase):

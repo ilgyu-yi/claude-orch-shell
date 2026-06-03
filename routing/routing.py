@@ -31,11 +31,19 @@ class Rule(str, Enum):
     R5_TERMINAL = "R5"          # closed (completed / not-planned) -> terminal
     R6_MALFORMED_LABELS = "R6"  # initiative AND directive co-present -> malformed flag
     R7_MALFORMED_SECTION = "R7"  # Active but a required section header is missing
+    R8_CHALLENGE = "R8"         # initiative:challenged -> propose eng->dir handback (§3.6)
+    R9_COMPLETION = "R9"        # initiative:completion-requested -> propose eng->dir handback (§3.6)
     SKIP_NOT_INITIATIVE = "SKIP"  # not an initiative -> not the claude-orch-shell's concern
 
 
-# Outcomes the claude-orch-shell surfaces as handoff PROPOSALS (SPEC §3.3).
-PROPOSAL_RULES = frozenset({Rule.R1_PROPOSE_HANDOFF})
+# Feedback labels eng's comment markers are projected into (SPEC §3.6 / §5.4; vocabulary
+# owned by this SPEC). The routing core reads them as plain labels — no comment reading.
+LABEL_CHALLENGED = "initiative:challenged"
+LABEL_COMPLETION = "initiative:completion-requested"
+
+# Outcomes the claude-orch-shell surfaces as handoff PROPOSALS (SPEC §3.3) — both the
+# downward dir->eng handoff (R1) and the upward eng->dir handbacks (R8/R9).
+PROPOSAL_RULES = frozenset({Rule.R1_PROPOSE_HANDOFF, Rule.R8_CHALLENGE, Rule.R9_COMPLETION})
 # Outcomes the claude-orch-shell surfaces as malformed-artifact FLAGS (SPEC §3.4).
 FLAG_RULES = frozenset({Rule.R6_MALFORMED_LABELS, Rule.R7_MALFORMED_SECTION})
 # Outcomes worth an optional rollup REPORT (SPEC §3, §7) — blocked / terminal.
@@ -167,22 +175,56 @@ def classify(md: InitiativeMetadata) -> RoutingDecision:
     )
 
 
+def feedback_decisions(md: InitiativeMetadata) -> tuple[RoutingDecision, ...]:
+    """The upward eng->dir edge (SPEC §3.6, R8/R9): propose a handback when eng surfaced a
+    challenge / completion, projected onto the feedback labels.
+
+    Emitted **additively** to the lifecycle classification (an Initiative carrying a
+    feedback label is necessarily already consumed → its lifecycle decision is R2; without
+    this it would be silently ignored, SPEC §3.1 precedence). R8 and R9 are independent —
+    if both labels are present, both are surfaced. Malformed (R6) and non-/closed
+    initiatives get no feedback routing.
+    """
+    if "initiative" not in md.labels or "directive" in md.labels:
+        return ()
+    if md.state != "open":
+        return ()
+    out: list[RoutingDecision] = []
+    if LABEL_CHALLENGED in md.labels:
+        out.append(RoutingDecision(
+            md.number, Rule.R8_CHALLENGE,
+            "has an eng challenge — dir re-evaluation requested",
+            is_proposal=True, is_flag=False, title=md.title,
+        ))
+    if LABEL_COMPLETION in md.labels:
+        out.append(RoutingDecision(
+            md.number, Rule.R9_COMPLETION,
+            "reported execution-complete by eng — dir termination assessment requested",
+            is_proposal=True, is_flag=False, title=md.title,
+        ))
+    return tuple(out)
+
+
 @dataclass(frozen=True)
 class EvaluationResult:
     proposals: tuple[RoutingDecision, ...]
     flags: tuple[RoutingDecision, ...]
     reports: tuple[RoutingDecision, ...]
-    decisions: tuple[RoutingDecision, ...]  # full per-initiative result (incl. R2/R4/SKIP)
+    decisions: tuple[RoutingDecision, ...]  # full per-initiative result (incl. R2/R4/SKIP/R8/R9)
 
 
 def evaluate(repo_metadata: list[InitiativeMetadata]) -> EvaluationResult:
     """Pure evaluation over the target repo's metadata (SPEC §7).
 
-    Idempotent: re-evaluating unchanged metadata yields the same result. A proposal
-    is emitted only for R1 (Active + unconsumed), so an already-consumed Initiative
-    (R2) never produces a duplicate handoff (SPEC §7 idempotency).
+    Idempotent: re-evaluating unchanged metadata yields the same result. Downward (R1)
+    proposals come from `classify`; upward (R8/R9) feedback proposals are emitted
+    additively by `feedback_decisions` (SPEC §3.6). An already-consumed Initiative (R2)
+    never produces a duplicate dir->eng handoff, but a *feedback*-labelled one is surfaced
+    via R8/R9 rather than swallowed by R2.
     """
-    decisions = tuple(classify(md) for md in repo_metadata)
+    base = tuple(classify(md) for md in repo_metadata)
+    feedback = tuple(d for md in repo_metadata for d in feedback_decisions(md))
+    decisions = base + feedback
     proposals = tuple(d for d in decisions if d.rule in PROPOSAL_RULES)
     flags = tuple(d for d in decisions if d.rule in FLAG_RULES)
     reports = tuple(d for d in decisions if d.rule in REPORT_RULES)
@@ -195,7 +237,8 @@ def render(result: EvaluationResult) -> str:
     lines.append(f"Proposed handoffs ({len(result.proposals)}):")
     for d in result.proposals:
         label = f"#{d.number}" + (f" ({d.title})" if d.title else "")
-        lines.append(f"  - {label}: {d.reason} [propose dir->eng]")
+        direction = "eng->dir" if d.rule in (Rule.R8_CHALLENGE, Rule.R9_COMPLETION) else "dir->eng"
+        lines.append(f"  - {label} [{d.rule.value}]: {d.reason} [propose {direction}]")
     lines.append(f"Malformed flags ({len(result.flags)}):")
     for d in result.flags:
         lines.append(f"  - #{d.number} [{d.rule.value}]: {d.reason}")
