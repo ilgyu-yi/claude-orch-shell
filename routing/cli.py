@@ -24,7 +24,7 @@ import sys
 from typing import Callable, Optional
 
 from fetch import fetch_via_gh
-from routing import InitiativeMetadata, evaluate, render, EvaluationResult
+from routing import InitiativeMetadata, Rule, evaluate, render, EvaluationResult
 
 Fetcher = Callable[[str], list]
 
@@ -78,13 +78,20 @@ def run_evaluate(
         out(render(result))
         if auto_invoke:
             # Transport is a deferred Tier-2 open item (SPEC §5.2, §9): do NOT launch.
-            if result.proposals:
+            # Each edge has a distinct actuator (SPEC §5.2.2): eng consumes for R1
+            # (dir->eng), dir reviews for R8/R9 feedback (eng->dir).
+            eng_proposals = [d for d in result.proposals if d.rule is Rule.R1_PROPOSE_HANDOFF]
+            dir_proposals = [d for d in result.proposals
+                             if d.rule in (Rule.R8_CHALLENGE, Rule.R9_COMPLETION)]
+            if eng_proposals or dir_proposals:
                 out("\nauto-invoke requested, but shell invocation is not yet implemented "
-                    "(SPEC §5.2/§9). Would invoke eng to consume:")
-                for d in result.proposals:
-                    out(f"  - #{d.number}" + (f" ({d.title})" if d.title else ""))
+                    "(SPEC §5.2/§9). Would invoke:")
+                for d in eng_proposals:
+                    out(f"  - eng (consume) #{d.number}" + (f" ({d.title})" if d.title else ""))
+                for d in dir_proposals:
+                    out(f"  - dir (review {d.rule.value}) #{d.number}" + (f" ({d.title})" if d.title else ""))
             else:
-                out("\nauto-invoke requested; no R1 proposals to act on.")
+                out("\nauto-invoke requested; no proposals to act on.")
     return result
 
 
