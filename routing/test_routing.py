@@ -185,6 +185,27 @@ class TestFeedbackRouting(unittest.TestCase):
         self.assertEqual(feedback_decisions(
             md(labels=("initiative", "directive", "initiative:challenged"))), ())
 
+    def test_malformed_R7_missing_header_gets_no_feedback(self):
+        # SPEC §3.1: "Malformed R6/R7 ... get no feedback routing." A challenged
+        # Initiative missing its `## Termination condition` header (R7) must not
+        # surface an R8/R9 handback — the malformed flag takes precedence, and a
+        # termination assessment on a headerless Initiative is incoherent.
+        self.assertEqual(feedback_decisions(
+            md(labels=("initiative", "initiative:challenged"),
+               has_termination_header=False, consumer_count=1)), ())
+        self.assertEqual(feedback_decisions(
+            md(labels=("initiative", "initiative:completion-requested"),
+               has_termination_header=False, consumer_count=1)), ())
+
+    def test_evaluate_R7_malformed_does_not_also_propose_feedback(self):
+        # End-to-end: an R7-malformed, feedback-labelled Initiative surfaces ONLY
+        # the malformed flag, never a feedback proposal (SPEC §3.1 precedence).
+        m = md(7, labels=("initiative", "initiative:completion-requested"),
+               has_termination_header=False, consumer_count=1)
+        res = evaluate([m])
+        self.assertEqual([d.rule for d in res.flags], [Rule.R7_MALFORMED_SECTION])
+        self.assertEqual(res.proposals, ())
+
     def test_closed_gets_no_feedback(self):
         self.assertEqual(feedback_decisions(
             md(state="closed", close_reason="completed",
