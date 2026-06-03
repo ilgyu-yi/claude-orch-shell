@@ -287,25 +287,89 @@ changes. claude-orch-shell does not embed shell internals; it holds a path + a r
 "Invoke a shell" means: launch that shell's Claude Code context (a local session/process)
 pointed at the target repo or a workspace, handing it **metadata** (e.g., "consume
 Initiative #N"). The shell then does its own work under its own gates. claude-orch-shell's
-involvement ends at launch; it does not steer the shell's internal decisions. The concrete
-launch mechanism (subprocess, session hand-off) is a Tier-2 choice (§9), parallel to res's
-own invocation-mechanism open item (res SPEC §10).
+involvement ends at launch; it does not steer the shell's internal decisions. Transport
+**actuates** a proposed handoff (§3.3); it never makes a stage's judgment (O5).
+
+#### 5.2.1 Two transport modes
+
+| Mode | When | Mechanism |
+|---|---|---|
+| **session hand-off** (default) | `auto_invoke: false` | claude-orch-shell does **not** launch anything. It emits a **runnable handoff** (the exact command + metadata for the next stage) to a durable place (§5.2.5); a **human** runs it in a *separate* session. The two sessions never talk directly — they meet only through durable artifacts (Issues, labels, commits, files). The hand-off **is** the proposal, made concrete. |
+| **subprocess** (autonomous) | `auto_invoke: true` | claude-orch-shell **ephemerally spawns** the shell per task (`bin/<shell> … ` → `claude -p "<task>"`), the shell does its bounded work and **exits**. Fire-and-forget; results flow back via metadata re-evaluation (§5.2.5, §7). Not a long-running daemon — a fresh spawn per handoff, matching the stateless-over-metadata loop and the context-narrowing discipline. |
+
+The two modes map onto the `auto_invoke` flag (§5.1). Session hand-off is buildable now and
+needs no special permission; subprocess needs the safety posture and sanction of §5.2.3.
+
+#### 5.2.2 Payload and which shells
+
+- **Payload is metadata only** — e.g., `consume Initiative #N`, the target repo. Never
+  content, never a judgment. The shell reads the rest itself (eng reads #N's body).
+- claude-orch-shell launches **dir and eng only** — the two routing edges' actuators
+  (eng for R1 consume; dir for R8/R9 feedback). **res is never launched by
+  claude-orch-shell** (§6); res is a stage-internal subroutine that *dir/eng* spawn when
+  they need it. The spawn tree is `orch→eng`, `orch→dir`, and (inside those) `dir/eng→res`.
+
+#### 5.2.3 Safety and permission posture (subprocess mode)
+
+When a shell is spawned autonomously, **safety comes from the shell's own hooks, not from
+Claude's permission prompts.** eng-shell's PreToolUse hooks (branch protection, commit
+format, secret scan, …) run regardless of permission mode; they are the guardrail. So
+subprocess transport launches the shell with **Claude permission-prompts bypassed but the
+shell's hooks active** — the shell self-guards.
+
+Because the host harness cannot know the shell's hooks provide that guardrail, autonomous
+launch requires a **one-time user sanction** (a permission rule authorizing
+claude-orch-shell to launch the shell binaries). This sanction is a **design requirement,
+not a loophole**: the same sanction is needed however the transport is built. It is granted
+once and covers the launchers; thereafter claude-orch-shell spawns on demand without
+re-prompting.
+
+#### 5.2.4 Observability — the shell's run must surface
+
+A subprocess run must **not** be a black box. Three guarantees:
+
+1. **Durable evidence (always).** The shell leaves a complete artifact trail — PR, commits
+   (Doc→Test→Code), `.claude/audit/audit.jsonl`, Issue comments — visible on GitHub/the repo
+   after the fact. This is eng-shell's own design ("an AI agent cannot drift past a gate
+   without leaving evidence"), so an autonomous run is inherently auditable.
+2. **Transcript surfacing.** claude-orch-shell captures the spawned `claude -p` stdout,
+   **persists it to a log**, and **surfaces a summary** to the human (what the shell did,
+   which artifacts it produced). Fire-and-forget ≠ silent.
+3. **Attended final step.** The *consequential* end (PR-ready / merge) runs **attended**:
+   claude-orch-shell invokes the shell to do the *work* autonomously but lands it at
+   **PR-ready for human review** — never a silent auto-merge. The human stays in the loop at
+   the irreversible step. (Uses eng-shell's attended mode; SPEC trusts that mode rather than
+   re-implementing the gate.)
+
+#### 5.2.5 Result flow — fire-and-forget + metadata re-evaluation
+
+claude-orch-shell does **not** block on the spawned shell or pull its result back in-band.
+The shell leaves a **metadata trail** (a Directive carrying `Parent Initiative: #N`; a
+challenge/completion label; an Issue state change); claude-orch-shell's *next* `evaluate`
+run reads that trail and routes accordingly (R2 / R8 / R9). The hand-off "channel" between
+sessions is durable shared state, never a live connection — consistent with the
+metadata-only, idempotent operation model (§7). For session hand-off, the runnable
+instruction is written durably (a handoff queue / report) so it survives across sessions and
+any actor — human or a later orch run — can pick it up.
 
 ### 5.3 eng is invoked as a frozen contract
 
-eng-shell is frozen/out of scope (dir SPEC §10). claude-orch-shell may
-**invoke** eng (transport) and **read** eng-produced metadata (the `Parent Initiative: #N`
-marker, §3.2; the `## Initiative challenge|completion` comment markers, surfaced as labels
-by §5.4), but never modifies eng-shell and assumes nothing about eng's internals beyond the
-published contract. **No claude-orch-shell feature requires an eng-shell change** — the
-upward edge (§3.6) is built on eng's *existing* comment markers plus a target-repo Action
-(§5.4), specifically so eng stays frozen (decision O10, §8).
+eng-shell is treated as an external system with a published contract (dir SPEC §10).
+claude-orch-shell may **invoke** eng (transport, §5.2) and **read** eng-produced metadata
+(the `Parent Initiative: #N` marker, §3.2; the `initiative:challenged` /
+`initiative:completion-requested` labels, §3.6/§5.4), but never reads or rewrites eng's
+internals beyond that contract. **claude-orch-shell's routing requires no eng change** — it
+routes on labels regardless of *who* produces them, and on eng's *existing* `## Initiative
+challenge|completion` comment markers. The label-izer workflow's chosen **host** is eng
+substrate (eng#305, a scoped additive change the owner sanctioned, §5.4); that is an eng
+hosting decision, not something orch's routing mandates — orch is agnostic to the label's
+source.
 
 ### 5.4 Required target-repo substrate: the feedback-label Action
 
 The upward edge (§3.6) depends on one piece of **target-repo substrate** — a GitHub Action
-(`initiative-feedback-label.yml`, installed at onboarding alongside the other dir-mode
-workflows):
+(`initiative-feedback-label.yml`) that **runs in the target repo** (where the
+`issue_comment` events fire and where labels are applied):
 
 - **Trigger**: `issue_comment` (`created`).
 - **Behavior**: if the new comment's body begins with `## Initiative challenge`, add the
@@ -313,14 +377,24 @@ workflows):
   `initiative:completion-requested`. Idempotent (adding an existing label is a no-op).
   Event-driven on *new* comments only — it never re-scans history, so it does not re-add a
   label dir has removed.
-- **Why it lives in the target repo, not in eng or orch**: it converts eng's *published*
-  comment contract into a routing label without touching eng (frozen) and without
-  claude-orch-shell writing to artifacts (it stays a metadata reader). This mirrors
-  eng-shell's own `auto-status-proposed.yml` pattern.
+
+**Ownership (vocabulary vs. host).** Two separable concerns:
+
+- The **label vocabulary and its routing meaning are owned by this SPEC**
+  (claude-orch-shell): `initiative:challenged` / `initiative:completion-requested` and what
+  R8/R9 do with them.
+- The **workflow that mechanically applies the mapping is hosted and installed by
+  eng-shell's onboarding** (eng substrate, alongside `auto-status-proposed.yml`), per eng
+  Directive `ilgyu-yi/claude-eng-shell#305`. This is a *scoped, additive* eng change the
+  owner sanctioned — it does **not** change eng's runtime: the eng agent stays comment-only
+  (`initiative-readonly` unchanged); only the CI Action (a separate actor) applies the
+  label. So eng's behavior remains label-agnostic ("escalate, not decide"); eng merely
+  *distributes* an implementation of an orch-owned mapping. (This refines decision O10: the
+  *host* may be eng substrate; the *vocabulary* stays orch's.)
 
 claude-orch-shell treats this Action as **optional substrate**: absent it, no labels appear
 and the upward edge is simply inactive (fail-open, §3.6) — the eng comments remain for a
-human. Implementing the Action is a Tier-2 item (§9).
+human. The label vocabulary lives here; the workflow implementation tracks eng#305 (§9).
 
 ---
 
@@ -375,8 +449,12 @@ goal, then revise-and-log per brief §2.4).
 | O7 | Shells are located via a **registry** (path + invocation recipe), with paths that become submodules later without changing the registry shape (§5.1). | Keeps claude-orch-shell decoupled from shell internals and survives the planned submodule promotion (brief §1). |
 | O8 | Malformed-artifact handling is **flag-only** (R6, R7, §3.4): surface label-exclusivity / required-section-presence violations, propose no handoff, never auto-fix. | Structural integrity is metadata-checkable (O2-safe); fixing would be authoring content (violates O5). |
 | O9 | Operation is a **pure evaluation over metadata** → proposals/flags/reports; invoked, idempotent, not a daemon (§7). | Makes the metadata-only invariant (§4) structurally enforceable and re-runs safe. |
-| O10 | The eng→dir feedback signal is a **label derived from eng's comment marker by a target-repo Action** (§3.6, §5.4) — **not** a label eng emits itself. | Single source of truth: the label is a deterministic projection of eng's comment, so the two can't drift. eng stays unaware of the routing vocabulary (no abstraction leak) and **unchanged** (frozen) — routing-vocabulary changes never touch eng. Mirrors eng's own `auto-status-proposed.yml`. Chosen over option A (eng emits the label), which would require unfreezing eng and couple it to the protocol. |
+| O10 *(refined by O12)* | The eng→dir feedback signal is a **label derived from eng's comment marker by an Action** (§3.6, §5.4) — **not** a label eng's *runtime* emits itself. | Single source of truth: the label is a deterministic projection of eng's comment, so the two can't drift. eng's *runtime* stays vocabulary-agnostic (the agent never reads/applies the routing labels). Mirrors eng's own `auto-status-proposed.yml`. Chosen over option A (the eng *agent* emits the label at runtime), which would couple eng's behavior to the protocol. **Note (O12):** the *workflow host* is eng substrate (eng#305), so eng *distributes* the label-izer even though its runtime stays label-agnostic. |
 | O11 | The feedback **handshake** is: Action **adds** the label (new-comment event), dir **removes** it after handling, claude-orch-shell **reads** presence, eng **comments** only (§3.6). | A clean four-role split with no shared state and no timestamps. Label removal is the "handled" signal that clears the upward route; claude-orch-shell stays a read-only metadata router. |
+| O12 | **Refines O10**: the label *vocabulary* stays orch-owned (this SPEC), but the label-izer *workflow* is **hosted/installed by eng substrate** (eng#305), not by orch (§5.4). | Co-locating the workflow with eng's own `auto-status-proposed.yml` and its comment contract is cohesive; it is a scoped, additive eng change that leaves eng's runtime label-agnostic (`initiative-readonly` unchanged). Supersedes O10's "eng stays unaware" only at the substrate-distribution level — eng's *behavior* is still vocabulary-agnostic. |
+| O13 | **Two transport modes** (§5.2.1): **session hand-off** is the default (auto_invoke:false — orch emits a runnable handoff, a human runs it in a separate session); **subprocess** is the autonomous mode (auto_invoke:true — ephemeral per-task spawn, fire-and-forget). | Session hand-off needs no special permission and is buildable now; it *is* the propose-only proposal made concrete. Subprocess is the autonomous upgrade. Ephemeral (not daemon) spawns match the stateless metadata-re-evaluation loop and context-narrowing. |
+| O14 | In subprocess mode, **safety = the spawned shell's own hooks**, not Claude's permission prompts; autonomous launch needs a **one-time user sanction** (§5.2.3). | eng's hooks gate regardless of permission mode, so launching with prompts bypassed + hooks active is the correct posture. The host harness can't know that, so the sanction is a *design requirement* (needed however transport is built), not a workaround. |
+| O15 | A subprocess run must be **observable** (§5.2.4): durable artifacts (always) + transcript surfaced + the **consequential final step runs attended** (PR-ready for human review, never silent auto-merge). | Autonomous ≠ opaque. eng already leaves a full audit/PR trail; orch surfaces the transcript and keeps the human at the irreversible step via eng's attended mode. |
 
 ---
 
@@ -407,18 +485,26 @@ goal, then revise-and-log per brief §2.4).
   [`routing/config.py`](routing/) with an example [`orch.config.example.yml`](orch.config.example.yml)
   (`target_repo`, `shells`{path,invoke}, `auto_invoke`). Still open: swap the minimal parser
   for real YAML if configs grow.
-- **Shell invocation transport** (§5.2): the concrete launch mechanism (subprocess / session
-  hand-off) for `auto_invoke`. Still open; the CLI is propose-only until then.
+- **Shell invocation transport** (§5.2): ✅ **specified** — two modes (session hand-off
+  default / subprocess autonomous), the hooks-as-guardrail + one-time-sanction posture, and
+  the observability + attended-final requirements. Still open (Tier 2):
+  - **session hand-off** — emit runnable handoffs to a durable queue/report (buildable now;
+    no sanction needed);
+  - **subprocess** — the ephemeral `claude -p` spawn + transcript capture/summary + the
+    permission sanction wiring;
+  - **`eng#305`** hosts the feedback-label workflow (§5.4); res's own invocation mechanism
+    is res SPEC §10.
+- **eng#305 — feedback-label workflow** (§5.4): the `issue_comment`→label workflow, hosted
+  and installed by eng-shell onboarding (tracked at `ilgyu-yi/claude-eng-shell#305`).
 - **Reports** (§3, §7): which rollups are worth emitting (blocked, completed, malformed) and
   in what form.
 - **eng→dir upward edge** (§3.6): ✅ **specified** — R8/R9 route the `initiative:challenged`
   / `initiative:completion-requested` labels back to dir. Still open (Tier 2 / cross-repo):
-  - the **feedback-label Action** (§5.4) — the `issue_comment`→label workflow in the target
-    repo (not yet implemented);
+  - the **feedback-label workflow** — hosted by eng (eng#305, §5.4 / above);
   - the **routing-core support** for R8/R9 in `routing/` (add the two labels to the metadata
     + classify rules);
   - the **dir-side feedback lifecycle** — how dir acts on a challenge/completion and removes
-    the label, plus a **challenge-loop cap** (specified in claude-dir-shell's SPEC; a
+    the label, plus a **challenge-loop cap** (to be specified in claude-dir-shell's SPEC; a
     separate dir-shell issue).
 - **Submodule promotion** (brief §1): when the sub-repos become submodules, update the
   registry `path` resolution and remove the `.gitignore` entries. Deferred; do nothing that
