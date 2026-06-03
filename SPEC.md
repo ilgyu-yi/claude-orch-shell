@@ -492,19 +492,25 @@ goal, then revise-and-log per brief §2.4).
 - **Operation entry point / CLI** (§7): ✅ **implemented (propose-only)** in
   [`routing/cli.py`](routing/) + [`bin/orch`](bin/orch) — `orch evaluate <repo>` wires
   `fetch_via_gh → evaluate → render` (text or `--json`). Offline-tested via an injected
-  fetcher. `--auto-invoke` is recognized but only *reports* what it would invoke (transport
-  deferred, §5.2). Live `gh` path verified by documented manual check.
+  fetcher. `--auto-invoke` now **actuates** proposals via the subprocess transport (§5.2,
+  `routing/transport.py`); without an injected spawner it prints a preview. Live `gh` path
+  verified by documented manual check.
 - **Config format/location** (§5.1): ✅ **minimal loader implemented** in
   [`routing/config.py`](routing/) with an example [`orch.config.example.yml`](orch.config.example.yml)
   (`target_repo`, `shells`{path,invoke}, `auto_invoke`). Still open: swap the minimal parser
   for real YAML if configs grow.
 - **Shell invocation transport** (§5.2): ✅ **specified** — two modes (session hand-off
   default / subprocess autonomous), the hooks-as-guardrail + one-time-sanction posture, and
-  the observability + attended-final requirements. Still open (Tier 2):
-  - **session hand-off** — emit runnable handoffs to a durable queue/report (buildable now;
-    no sanction needed);
-  - **subprocess** — the ephemeral `claude -p` spawn + transcript capture/summary + the
-    permission sanction wiring;
+  the observability + attended-final requirements. Status:
+  - **subprocess** (autonomous) — ✅ **implemented** in [`routing/transport.py`](routing/):
+    `plan_spawns` (pure: R1→eng, R8/R9→dir, res never spawned; `{repo}`/`{number}`/`{rule}`
+    recipe substitution → argv) + `actuate` (fire-and-forget, injected spawner) +
+    `subprocess_spawner` (detached `Popen`, transcript → per-task log) + `render_spawn_summary`.
+    Wired into `cli.py` (`auto_invoke` injects the real spawner; `--log-dir`). orch adds **no**
+    permission-bypass flag — the sanctioned launch flags live in the operator's `invoke`
+    recipe (§5.2.3). Offline-tested with a stub spawner (no process launched).
+  - **session hand-off** — still open (Tier 2): emit runnable handoffs to a durable
+    queue/report (buildable now; no sanction needed).
   - **`eng#305`** hosts the feedback-label workflow (§5.4); res's own invocation mechanism
     is res SPEC §10.
 - **eng#305 — feedback-label workflow** (§5.4): the `issue_comment`→label workflow, hosted
