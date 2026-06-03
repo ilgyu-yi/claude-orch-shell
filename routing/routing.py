@@ -182,12 +182,16 @@ def feedback_decisions(md: InitiativeMetadata) -> tuple[RoutingDecision, ...]:
     Emitted **additively** to the lifecycle classification (an Initiative carrying a
     feedback label is necessarily already consumed → its lifecycle decision is R2; without
     this it would be silently ignored, SPEC §3.1 precedence). R8 and R9 are independent —
-    if both labels are present, both are surfaced. Malformed (R6) and non-/closed
-    initiatives get no feedback routing.
+    if both labels are present, both are surfaced. Malformed (R6: label-exclusivity;
+    R7: missing required header) and non-/closed initiatives get no feedback routing —
+    the malformed flag takes precedence, and a termination assessment on a headerless
+    Initiative is incoherent (SPEC §3.1: "Malformed R6/R7 ... get no feedback routing").
     """
-    if "initiative" not in md.labels or "directive" in md.labels:
+    if "initiative" not in md.labels or "directive" in md.labels:   # R6 malformed / non-initiative
         return ()
     if md.state != "open":
+        return ()
+    if not md.has_termination_header:                                # R7 malformed
         return ()
     out: list[RoutingDecision] = []
     if LABEL_CHALLENGED in md.labels:
