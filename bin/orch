@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Thin launcher for the orch CLI (claude-orch-shell SPEC §7).
+# Resolves the repo root from this script's location so it runs from anywhere.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec python3 "$here/routing/cli.py" "$@"
