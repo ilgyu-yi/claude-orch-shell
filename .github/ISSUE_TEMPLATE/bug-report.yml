@@ -1,0 +1,28 @@
+name: Bug report
+description: Something doesn't work as documented.
+title: "fix: <subject>"
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What's wrong
+      description: What happened vs. what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Steps / command / input that triggers it.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] Failing case reproduced by a test
+        - [ ] Fix applied; test passes
+    validations:
+      required: true
