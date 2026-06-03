@@ -1,0 +1,28 @@
+# orch.config.example.yml — example claude-orch-shell config / shell registry (SPEC §5.1).
+# Copy to `orch.config.yml` and edit. This file is an EXAMPLE only (no live target).
+#
+# Used by:  python3 routing/cli.py evaluate --config orch.config.yml
+#       or:  ./bin/orch evaluate --config orch.config.yml
+
+# The repo whose Initiative metadata is routed (owner/name), read via `gh`.
+target_repo: owner/name
+
+# Shell registry: where each shell lives + how to invoke it. Paths are the sibling
+# sub-repo dirs today; they become submodules later without changing this shape
+# (SPEC §5.1). `invoke` recipes are placeholders — the launch transport is a
+# deferred Tier-2 item (SPEC §5.2, §9). res is never invoked by claude-orch-shell.
+shells:
+  dir:
+    path: ./claude-dir-shell
+    invoke: "<recipe to launch dir-shell against target_repo / a workspace>"
+  eng:
+    path: ./claude-eng-shell        # FROZEN external system — read-as-contract only
+    invoke: "<recipe to launch eng-shell to consume Initiative #N>"
+  res:
+    path: ./claude-res-shell
+    invoke: null                     # res is stage-internal (SPEC §6); not invoked
+
+# Propose-only by default (SPEC §3.3, §7). With true, R1 proposals would additionally
+# trigger a mechanical eng invocation — transport not yet implemented (SPEC §5.2/§9),
+# so the CLI currently only reports what it would invoke.
+auto_invoke: false
