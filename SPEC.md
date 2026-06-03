@@ -136,6 +136,14 @@ feedback labels are `initiative:*`, not `status:*`, so they do not by themselves
 "Active" determination (§9) — R8/R9 fire on an open Initiative carrying the label regardless
 of its lifecycle state.
 
+**Emission is additive (implementation note).** R8/R9 are emitted *in addition to* the
+Initiative's lifecycle classification, not in place of it: a feedback-labelled Initiative is
+necessarily already consumed, so its lifecycle decision is R2, and the feedback proposal(s)
+are emitted alongside it. "Precedence before R1/R2" therefore means the feedback is **always
+surfaced, never swallowed by R2** (the failure mode the upward edge exists to prevent) — and
+both R8 and R9 can fire for the same Initiative. (Malformed R6/R7 and non-/closed initiatives
+get no feedback routing.)
+
 ### 3.2 Detecting "already consumed" (metadata only)
 
 An Initiative `#N` is "being consumed" iff there exists at least one other Issue in the
@@ -506,8 +514,8 @@ goal, then revise-and-log per brief §2.4).
 - **eng→dir upward edge** (§3.6): ✅ **specified** — R8/R9 route the `initiative:challenged`
   / `initiative:completion-requested` labels back to dir. Still open (Tier 2 / cross-repo):
   - the **feedback-label workflow** — hosted by eng (eng#305, §5.4 / above);
-  - the **routing-core support** for R8/R9 in `routing/` (add the two labels to the metadata
-    + classify rules);
+  - ✅ the **routing-core support** for R8/R9 is **implemented** in `routing/routing.py`
+    (`feedback_decisions`; emitted additively in `evaluate`; 8 tests);
   - the **dir-side feedback lifecycle** — how dir acts on a challenge/completion and removes
     the label, plus a **challenge-loop cap** — ✅ now specified in claude-dir-shell SPEC §9.1
     / D14 (challenge→revise/defend/retire; completion assessed via the termination condition;
