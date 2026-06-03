@@ -6,12 +6,32 @@ A reference implementation of claude-orch-shell's **metadata-only routing model*
 
 ## What it is
 
-- `cli.py` — the **`orch` CLI** (SPEC §7), propose-only. Wires `fetch_via_gh(repo)` →
-  `evaluate` → `render`. The fetch step is injectable (`fetcher=`) so the CLI is
-  offline-testable without `gh`. `auto_invoke` is acknowledged but the shell-launch
-  transport is a deferred Tier-2 item (SPEC §5.2/§9), so it only *reports* what it would
-  invoke. Run: `./bin/orch evaluate <owner/name>` (or `python3 routing/cli.py evaluate …`;
-  `--config orch.config.yml`, `--json`, `--auto-invoke`).
+- `cli.py` — the **`orch` CLI** (SPEC §7). Wires `fetch_via_gh(repo)` → `evaluate` →
+  `render`. The fetch step is injectable (`fetcher=`) so the CLI is offline-testable
+  without `gh`. In propose-only mode it reports proposals/flags/reports; with
+  `auto_invoke` it actuates them via the transport (below). Run:
+  `./bin/orch evaluate <owner/name>` (or `python3 routing/cli.py evaluate …`;
+  `--config orch.config.yml`, `--json`, `--auto-invoke`, `--log-dir`).
+- `transport.py` — the **subprocess transport** (SPEC §5.2.1, autonomous mode). Turns an
+  `EvaluationResult` into shell spawns and actuates them:
+  - `plan_spawns(result, config, *, repo, log_dir)` — **pure**: maps proposals to
+    `SpawnTask`s — **R1 → eng** (consume #N), **R8/R9 → dir** (review feedback for #N);
+    **res is never spawned** (SPEC §5.2.2). Substitutes `{repo}`/`{number}`/`{rule}` into
+    the registry `invoke` recipe and `shlex`-splits to argv (no shell); assigns each a
+    per-task transcript log path. Shells with no recipe are skipped with a clear reason.
+  - `actuate(tasks, *, spawner)` — **fire-and-forget** (SPEC §5.2.5): calls the injected
+    `spawner` once per task and collects `SpawnOutcome`s; it never blocks on or reads the
+    child's result in-band — the *next* `evaluate` reads the metadata trail (R2/R8/R9).
+  - `subprocess_spawner(task)` — the real default: launches the argv **detached**
+    (`start_new_session`, no `shell=`), redirecting stdout+stderr to the transcript log
+    (SPEC §5.2.4), and returns immediately. Injectable, so tests use a stub and never
+    launch a process.
+  - `render_spawn_summary(outcomes)` — operator-facing summary (what was spawned, where
+    each transcript is).
+  - **Safety (SPEC §5.2.3)**: orch does not add `--dangerously-skip-permissions`; the
+    operator's `invoke` recipe carries the sanctioned launch flags (the spawned shell's
+    own hooks are the guardrail). The consequential final step stays attended via the
+    shell's own attended mode — orch never merges.
 - `config.py` — minimal loader for `orch.config.yml` (the SPEC §5.1 shell registry:
   `target_repo`, `shells` {path, invoke}, `auto_invoke`). Not a general YAML parser; see
   `orch.config.example.yml` at the repo root.

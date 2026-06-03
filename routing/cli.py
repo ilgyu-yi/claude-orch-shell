@@ -64,9 +64,16 @@ def run_evaluate(
     as_json: bool = False,
     auto_invoke: bool = False,
     fetcher: Fetcher = fetch_via_gh,
+    spawner=None,
+    log_dir: str = ".orch/transcripts",
     out=print,
 ) -> EvaluationResult:
-    """Core of `orch evaluate`, with an injectable fetcher for offline testing."""
+    """Core of `orch evaluate`, with an injectable fetcher (and spawner) for offline testing.
+
+    With `auto_invoke` and an injected `spawner`, proposals are actuated via the
+    subprocess transport (SPEC §5.2). Without a spawner (offline / preview), it only
+    reports what it would spawn.
+    """
     target = _resolve_repo(repo, config)
     metadata = fetcher(target)
     result = evaluate(metadata)
@@ -77,21 +84,27 @@ def run_evaluate(
         out(f"claude-orch-shell · target_repo={target} · mode={'auto-invoke' if auto_invoke else 'propose-only'}")
         out(render(result))
         if auto_invoke:
-            # Transport is a deferred Tier-2 open item (SPEC §5.2, §9): do NOT launch.
-            # Each edge has a distinct actuator (SPEC §5.2.2): eng consumes for R1
-            # (dir->eng), dir reviews for R8/R9 feedback (eng->dir).
-            eng_proposals = [d for d in result.proposals if d.rule is Rule.R1_PROPOSE_HANDOFF]
-            dir_proposals = [d for d in result.proposals
-                             if d.rule in (Rule.R8_CHALLENGE, Rule.R9_COMPLETION)]
-            if eng_proposals or dir_proposals:
-                out("\nauto-invoke requested, but shell invocation is not yet implemented "
-                    "(SPEC §5.2/§9). Would invoke:")
-                for d in eng_proposals:
-                    out(f"  - eng (consume) #{d.number}" + (f" ({d.title})" if d.title else ""))
-                for d in dir_proposals:
-                    out(f"  - dir (review {d.rule.value}) #{d.number}" + (f" ({d.title})" if d.title else ""))
+            if spawner is not None:
+                # Subprocess transport (SPEC §5.2): actuate the proposals. Each edge
+                # has its own actuator — eng for R1 (consume), dir for R8/R9 feedback.
+                from transport import plan_spawns, actuate, render_spawn_summary
+                plan = plan_spawns(result, config, repo=target, log_dir=log_dir)
+                outcomes = actuate(plan.tasks, spawner=spawner)
+                out("")
+                out(render_spawn_summary(plan, outcomes))
             else:
-                out("\nauto-invoke requested; no proposals to act on.")
+                # Preview (no spawner injected — e.g. offline): report, do not launch.
+                eng_proposals = [d for d in result.proposals if d.rule is Rule.R1_PROPOSE_HANDOFF]
+                dir_proposals = [d for d in result.proposals
+                                 if d.rule in (Rule.R8_CHALLENGE, Rule.R9_COMPLETION)]
+                if eng_proposals or dir_proposals:
+                    out("\nauto-invoke preview (no spawner) — would invoke:")
+                    for d in eng_proposals:
+                        out(f"  - eng (consume) #{d.number}" + (f" ({d.title})" if d.title else ""))
+                    for d in dir_proposals:
+                        out(f"  - dir (review {d.rule.value}) #{d.number}" + (f" ({d.title})" if d.title else ""))
+                else:
+                    out("\nauto-invoke requested; no proposals to act on.")
     return result
 
 
@@ -103,7 +116,9 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--config", default=None, help="Path to orch.config.yml.")
     ev.add_argument("--json", action="store_true", help="Emit JSON instead of text.")
     ev.add_argument("--auto-invoke", action="store_true",
-                    help="Request auto-invoke (transport not yet implemented; reports what it would invoke).")
+                    help="Actuate proposals via the subprocess transport (SPEC §5.2; needs the one-time launcher sanction).")
+    ev.add_argument("--log-dir", default=".orch/transcripts",
+                    help="Where to persist per-spawn transcript logs (SPEC §5.2.4).")
     return p
 
 
@@ -115,7 +130,15 @@ def main(argv: Optional[list] = None) -> int:
             from config import load_config_file
             config = load_config_file(args.config)
         auto = args.auto_invoke or bool(config and config.auto_invoke)
-        run_evaluate(args.repo, config=config, as_json=args.json, auto_invoke=auto)
+        # In auto-invoke mode the live CLI injects the real subprocess spawner; the
+        # one-time launcher sanction (SPEC §5.2.3) is the OS permission rule allowing
+        # the recipe binaries to run — orch adds no permission-bypass flag itself.
+        spawner = None
+        if auto:
+            from transport import subprocess_spawner
+            spawner = subprocess_spawner
+        run_evaluate(args.repo, config=config, as_json=args.json, auto_invoke=auto,
+                     spawner=spawner, log_dir=args.log_dir)
     return 0
 
 

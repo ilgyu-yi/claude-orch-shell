@@ -115,13 +115,32 @@ class TestRunEvaluate(unittest.TestCase):
         with self.assertRaises(SystemExit):
             run_evaluate(None, fetcher=stub_fetcher, out=_Out())
 
-    def test_auto_invoke_reports_but_does_not_launch(self):
+    def test_auto_invoke_preview_without_spawner_does_not_launch(self):
         out = _Out()
         run_evaluate("o/n", fetcher=stub_fetcher, auto_invoke=True, out=out)
         self.assertIn("auto-invoke", out.text)
-        self.assertIn("not yet implemented", out.text)
+        self.assertIn("preview", out.text.lower())
         # R1 (dir->eng) is actuated by eng (SPEC §5.2.2).
         self.assertIn("eng (consume) #10", out.text)
+
+    def test_auto_invoke_with_spawner_actuates(self):
+        # With an injected spawner, auto-invoke actually actuates via the transport.
+        from config import OrchConfig, ShellEntry
+        from transport import SpawnOutcome
+        calls = []
+        def stub_spawner(task):
+            calls.append(task)
+            return SpawnOutcome(task=task, launched=True, detail="stub pid 1")
+        cfg = OrchConfig(target_repo="o/n", auto_invoke=True, shells={
+            "eng": ShellEntry(path="./e", invoke="claude-eng -p 'consume #{number} in {repo}'"),
+        })
+        out = _Out()
+        run_evaluate("o/n", config=cfg, fetcher=stub_fetcher, auto_invoke=True,
+                     spawner=stub_spawner, log_dir="/tmp/orch-logs", out=out)
+        self.assertIn("launched 1", out.text)
+        self.assertIn("eng-10-R1.log", out.text)        # transcript path surfaced
+        self.assertNotIn("preview", out.text.lower())   # not the no-spawner path
+        self.assertEqual([t.number for t in calls], [10])
 
     def test_auto_invoke_routes_feedback_to_dir_not_eng(self):
         # Regression: R8/R9 handbacks are actuated by dir, NOT eng (SPEC §5.2.2).
