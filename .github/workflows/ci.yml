@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: unit tests
+        run: |
+          if [ -d routing ]; then
+            python3 -m unittest discover -s routing -p 'test_*.py' -v
+          else
+            echo "no routing/ yet — nothing to test"
+          fi

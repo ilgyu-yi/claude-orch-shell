@@ -1,0 +1,39 @@
+name: check-changelog
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  changelog:
+    # Skip when the PR is explicitly exempt.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: require a valid changelog fragment
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          added=$(git diff --name-only --diff-filter=A "$BASE" "$HEAD" \
+            | grep -E '^changelog_unreleased/[a-z]+/[0-9]+\.md$' || true)
+          if [ -z "$added" ]; then
+            echo "::error::No changelog fragment added and no 'skip-changelog' label."
+            echo "Add changelog_unreleased/<category>/<PR>.md ('- … (#<PR>)') or apply skip-changelog."
+            exit 1
+          fi
+          fail=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            n=$(basename "$f" .md)
+            first=$(head -n1 "$f")
+            case "$first" in
+              "- "*) ;;
+              *) echo "::error::$f must start with '- '"; fail=1 ;;
+            esac
+            echo "$first" | grep -qE "\(#$n\)" || { echo "::error::$f must contain (#$n)"; fail=1; }
+          done <<< "$added"
+          exit $fail
