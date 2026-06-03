@@ -1,0 +1,16 @@
+# Nested sub-repositories — each is its own independent git repo, committed
+# inside itself. The orchestrator must NOT absorb their contents as ordinary
+# files; ignoring them here preserves the path to future submodule promotion.
+# (When promoted to submodules, a future session removes these entries and adds
+#  .gitmodules + gitlinks. See WORK_LOG.md decision 2026-06-03.)
+claude-dir-shell/
+claude-eng-shell/
+claude-res-shell/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Python bytecode (routing/ Tier-2 unit)
+__pycache__/
+*.pyc
