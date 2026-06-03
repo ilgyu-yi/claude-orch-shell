@@ -9,20 +9,36 @@ target_repo: owner/name
 
 # Shell registry: where each shell lives + how to invoke it. Paths are the sibling
 # sub-repo dirs today; they become submodules later without changing this shape
-# (SPEC §5.1). `invoke` recipes are placeholders — the launch transport is a
-# deferred Tier-2 item (SPEC §5.2, §9). res is never invoked by claude-orch-shell.
+# (SPEC §5.1). res is never invoked by claude-orch-shell (SPEC §6).
+#
+# `invoke` is the launch recipe for subprocess transport (SPEC §5.2.1). orch
+# substitutes these placeholders into it, then shlex-splits the result into argv
+# (no shell, so no injection) and spawns it detached (fire-and-forget, §5.2.5):
+#   {repo}    → target_repo (owner/name)
+#   {number}  → the Initiative number being actuated
+#   {rule}    → the routing rule (R1 consume / R8 challenge / R9 completion)
+# The payload is metadata only — never artifact content (SPEC §5.2.2).
+#
+# SAFETY (SPEC §5.2.3): in subprocess mode safety comes from the spawned shell's own
+# hooks, not Claude prompts. orch does NOT add `--dangerously-skip-permissions` — put
+# the sanctioned launch flags in THIS recipe, so the bypass posture is explicit and
+# operator-owned. The one-time sanction is the OS permission rule allowing these
+# launcher binaries to run.
 shells:
   dir:
     path: ./claude-dir-shell
-    invoke: "<recipe to launch dir-shell against target_repo / a workspace>"
+    # R8/R9 feedback handback: dir re-evaluates Initiative {number}.
+    invoke: "./claude-dir-shell/bin/dir review-feedback {number} --repo {repo} --rule {rule}"
   eng:
     path: ./claude-eng-shell        # FROZEN external system — read-as-contract only
-    invoke: "<recipe to launch eng-shell to consume Initiative #N>"
+    # R1 consume: eng begins consuming Initiative {number}.
+    invoke: "./claude-eng-shell/bin/claude-eng -p 'consume Initiative #{number} in {repo}'"
   res:
     path: ./claude-res-shell
     invoke: null                     # res is stage-internal (SPEC §6); not invoked
 
-# Propose-only by default (SPEC §3.3, §7). With true, R1 proposals would additionally
-# trigger a mechanical eng invocation — transport not yet implemented (SPEC §5.2/§9),
-# so the CLI currently only reports what it would invoke.
+# Transport mode (SPEC §5.2.1). false (default) = propose-only / session hand-off:
+# orch only reports what it WOULD invoke. true = subprocess (autonomous): R1 proposals
+# spawn eng and R8/R9 spawn dir, each as an ephemeral fire-and-forget process whose
+# transcript is logged (SPEC §5.2.4). Requires the one-time launcher sanction (§5.2.3).
 auto_invoke: false
