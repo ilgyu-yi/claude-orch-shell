@@ -189,7 +189,9 @@ condition (dir SPEC §3–§4); eng, from the execution layer, can report back t
 **contradicts** the Initiative (a *challenge*) or that the work has **landed** (a
 *completion*). claude-orch-shell routes that signal back to dir, which adjudicates.
 
-**The signal is a label — eng stays frozen and comment-only.** eng's `/initiative-feedback`
+**The signal is a label — eng's *runtime* stays comment-only.** (eng's agent never edits the
+Initiative; the label-izer *workflow* is eng-hosted substrate, §5.4/O12 — a scoped change,
+not a runtime one.) eng's `/initiative-feedback`
 posts a **comment-only** finding led by a scannable marker (`## Initiative challenge` /
 `## Initiative completion`) and never edits/relabels/closes the Initiative (`initiative-
 readonly`). A **target-repo substrate Action** (§5.4) converts that comment marker into a
@@ -214,7 +216,8 @@ judge).
   signal; the upward route clears automatically.
 - **claude-orch-shell reads** label presence and **proposes**; it never adds or removes a
   label (it is a metadata reader, not a writer).
-- **eng comments only** (unchanged; frozen).
+- **eng comments only** (eng's runtime/agent unchanged; the eng-hosted label-izer workflow
+  is substrate, not runtime — §5.4/O12).
 
 **Fail-open.** If the substrate Action (§5.4) is not installed in the target repo, the
 labels never appear and claude-orch-shell simply emits no upward proposals — the eng
@@ -358,8 +361,10 @@ eng-shell is treated as an external system with a published contract (dir SPEC �
 claude-orch-shell may **invoke** eng (transport, §5.2) and **read** eng-produced metadata
 (the `Parent Initiative: #N` marker, §3.2; the `initiative:challenged` /
 `initiative:completion-requested` labels, §3.6/§5.4), but never reads or rewrites eng's
-internals beyond that contract. **claude-orch-shell's routing requires no eng change** — it
-routes on labels regardless of *who* produces them, and on eng's *existing* `## Initiative
+internals beyond that contract. **claude-orch-shell's routing *core* requires no eng
+change** — it routes on labels regardless of *who* produces them (the end-to-end upward edge
+does rely on the eng#305-hosted label-izer existing, §5.4; absent it, the edge is just
+inactive — fail-open, §3.6). It routes on eng's *existing* `## Initiative
 challenge|completion` comment markers. The label-izer workflow's chosen **host** is eng
 substrate (eng#305, a scoped additive change the owner sanctioned, §5.4); that is an eng
 hosting decision, not something orch's routing mandates — orch is agnostic to the label's
@@ -504,8 +509,10 @@ goal, then revise-and-log per brief §2.4).
   - the **routing-core support** for R8/R9 in `routing/` (add the two labels to the metadata
     + classify rules);
   - the **dir-side feedback lifecycle** — how dir acts on a challenge/completion and removes
-    the label, plus a **challenge-loop cap** (to be specified in claude-dir-shell's SPEC; a
-    separate dir-shell issue).
+    the label, plus a **challenge-loop cap** — ✅ now specified in claude-dir-shell SPEC §9.1
+    / D14 (challenge→revise/defend/retire; completion assessed via the termination condition;
+    cap N=2 → human / `status:blocked`). dir-side *tooling* (a `dir feedback <N>` command)
+    remains Tier 2 (dir SPEC §15).
 - **Submodule promotion** (brief §1): when the sub-repos become submodules, update the
   registry `path` resolution and remove the `.gitignore` entries. Deferred; do nothing that
   blocks it.
