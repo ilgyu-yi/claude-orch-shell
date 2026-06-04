@@ -32,6 +32,14 @@ A reference implementation of claude-orch-shell's **metadata-only routing model*
     operator's `invoke` recipe carries the sanctioned launch flags (the spawned shell's
     own hooks are the guardrail). The consequential final step stays attended via the
     shell's own attended mode — orch never merges.
+  - **Granting the one-time launch sanction (SPEC §5.2.3)**:
+    - *CLI (human/cron runs `./bin/orch … --auto-invoke`)*: no settings file — set
+      `auto_invoke: true`, put the sanctioned flags in the `invoke` recipe, and run it.
+      The deliberate run *is* the authorization (no Claude permission layer in the path).
+    - *Claude-driven (a Claude session runs orch via its Bash tool)*: copy
+      `.claude/settings.example.json` → `.claude/settings.local.json` (gitignored,
+      per-operator) to allow `Bash(./bin/orch evaluate:*)` once. That allow covers the
+      whole spawn cascade (Claude gates only the top-level call, not orch's `Popen`).
 - `config.py` — minimal loader for `orch.config.yml` (the SPEC §5.1 shell registry:
   `target_repo`, `shells` {path, invoke}, `auto_invoke`). Not a general YAML parser; see
   `orch.config.example.yml` at the repo root.
