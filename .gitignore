@@ -14,3 +14,11 @@ claude-res-shell/
 # Python bytecode (routing/ Tier-2 unit)
 __pycache__/
 *.pyc
+
+# The activated per-operator launch sanction (SPEC §5.2.3) — copied from
+# .claude/settings.example.json; granting autonomous-launch authority is a local,
+# deliberate act, never forced on a clone.
+.claude/settings.local.json
+
+# Subprocess-transport transcript logs (SPEC §5.2.4) — default `--log-dir`.
+.orch/

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "EXAMPLE ONLY — the one-time subprocess-launch sanction (claude-orch-shell SPEC §5.2.3). This file is INERT (Claude Code does not read `settings.example.json`). To activate the sanction for autonomous transport, copy it to `.claude/settings.local.json` (gitignored, per-operator) and keep only the rules you intend to grant. This authorizes a Claude session driving orch to run `orch evaluate` (including `--auto-invoke`) without re-prompting; the allow covers the whole spawn cascade because Claude gates only the top-level call, not orch's transitive Popen of the launchers. Not needed when a human/cron runs `./bin/orch` directly (no Claude permission layer — SPEC §5.2.3 model A).",
+  "permissions": {
+    "allow": [
+      "Bash(./bin/orch evaluate:*)"
+    ]
+  }
+}

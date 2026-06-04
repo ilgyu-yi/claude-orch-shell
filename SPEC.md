@@ -335,6 +335,28 @@ not a loophole**: the same sanction is needed however the transport is built. It
 once and covers the launchers; thereafter claude-orch-shell spawns on demand without
 re-prompting.
 
+**Granting it concretely.** *Where* the permission applies depends on how orch is run —
+note that orch's `subprocess_spawner` launches via a raw `Popen`, so a Claude `allow` rule
+gates the *invocation of orch*, not orch's transitive spawn:
+
+- **Model A — CLI (a human or cron runs `./bin/orch evaluate --auto-invoke`).** orch is a
+  plain process; the launcher is `exec`-ed with no Claude permission layer between. The
+  sanction is operational: set `auto_invoke: true`, put the sanctioned launch flags (e.g.
+  `--dangerously-skip-permissions`) in the shell's `invoke` recipe (§5.2.3 — orch never adds
+  them itself), and run it. The deliberate run *is* the authorization; no settings file is
+  involved.
+- **Model B — Claude-driven (a Claude session runs orch via its Bash tool).** Claude gates
+  the top-level Bash call, so the one-time sanction is an `allow` rule. orch ships an inert
+  [`.claude/settings.example.json`](.claude/settings.example.json); an operator copies it to
+  a gitignored `.claude/settings.local.json` to activate it — a per-operator, deliberate act
+  (never committed, so a clone is never auto-sanctioned). Because Claude sees only the
+  top-level `./bin/orch evaluate` call (not the transitive launcher `Popen`), allowing that
+  call *is* the sanction for the whole spawn cascade — which is what "covers the launchers"
+  means above.
+
+In both models the bypass flag affects only the *spawned* shell, whose own hooks are the
+guardrail (§5.2.3); orch itself adds no bypass.
+
 #### 5.2.4 Observability — the shell's run must surface
 
 A subprocess run must **not** be a black box. Three guarantees:
