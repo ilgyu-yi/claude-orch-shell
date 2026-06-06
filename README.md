@@ -49,10 +49,11 @@ and research — to produce exceptional output.
 ## Repository layout & git
 
 This top-level repo is itself a git repo with its own GitHub remote. The three shells are
-**independent git repos** nested as subdirectories and **git-ignored** by this repo, so
-claude-orch-shell does not absorb their contents — preserving the path to future
-**submodule** promotion. Commit changes to each shell **inside that shell**; commit
-claude-orch-shell's own files here. Each repo follows the same flow (below).
+**independent git repos** nested as **git submodules** (`.gitmodules`), so claude-orch-shell
+tracks only a pinned gitlink per shell and never absorbs their contents. Commit changes to
+each shell **inside that shell** (then bump the gitlink here); commit claude-orch-shell's own
+files here. Clone with `git clone --recurse-submodules`, or run `git submodule update --init`
+in an existing checkout. Each repo follows the same flow (below).
 
 ## Process
 
