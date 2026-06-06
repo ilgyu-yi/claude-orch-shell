@@ -25,9 +25,9 @@ routes them (SPEC §6). **claude-eng-shell is a frozen external system** — nev
 consumed only via the Initiative contract.
 
 ### 3. The repository layout
-The three shells are independent git repos nested here and git-ignored, preserving the path
-to submodule promotion. Commit each shell's changes **inside that shell**; commit
-claude-orch-shell's own files here.
+The three shells are independent git repos nested here as **git submodules** (`.gitmodules`);
+orch tracks only a pinned gitlink per shell, never their contents. Commit each shell's changes
+**inside that shell**, then bump the gitlink here; commit claude-orch-shell's own files here.
 
 ## Engineering discipline (adopted from claude-eng-shell)
 

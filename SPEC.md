@@ -289,9 +289,10 @@ shells:
 auto_invoke: false               # propose-only by default (§3.3, §7)
 ```
 
-Paths are the three sub-repo directories today and become **submodules** later (working
-brief §1) — the registry shape is unchanged by that migration; only resolution of `path`
-changes. claude-orch-shell does not embed shell internals; it holds a path + a recipe.
+Paths are the three sub-repo directories, now **git submodules** (`.gitmodules` + gitlinks,
+#29) — the registry shape was unchanged by that promotion; only resolution of `path` (a
+submodule checkout) changed. claude-orch-shell does not embed shell internals; it holds a
+path + a recipe.
 
 ### 5.2 Invocation = transport, not judgment
 
@@ -549,9 +550,9 @@ goal, then revise-and-log per brief §2.4).
     / D14 (challenge→revise/defend/retire; completion assessed via the termination condition;
     cap N=2 → human / `status:blocked`). dir-side *tooling* (a `dir feedback <N>` command)
     remains Tier 2 (dir SPEC §15).
-- **Submodule promotion** (brief §1): when the sub-repos become submodules, update the
-  registry `path` resolution and remove the `.gitignore` entries. Deferred; do nothing that
-  blocks it.
+- **Submodule promotion** (brief §1): ✅ done (#29) — the sub-repos are now git submodules
+  (`.gitmodules` + gitlinks) and the `.gitignore` entries are removed. The registry `path`
+  resolution and shape are unchanged.
 
 ---
 

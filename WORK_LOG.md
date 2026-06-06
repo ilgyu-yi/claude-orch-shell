@@ -31,4 +31,5 @@ not a running log.
 - Shell-invocation **transport** for `orch --auto-invoke` (SPEC §5.2/§9).
 - The dir survival/commitment **LLM rubric reviewers** + interactive draft→ground→revise loop.
 - The res **request handler** (accept a request, run broad→narrow, emit a document).
-- Optional: **submodule promotion** of the three shells under this repo.
+- ~~Optional: **submodule promotion** of the three shells under this repo.~~ Done (#29) —
+  the three shells are now git submodules (`.gitmodules` + gitlinks); registry shape unchanged.
