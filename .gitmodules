@@ -1,0 +1,9 @@
+[submodule "claude-dir-shell"]
+	path = claude-dir-shell
+	url = git@github.com:ilgyu-yi/claude-dir-shell.git
+[submodule "claude-eng-shell"]
+	path = claude-eng-shell
+	url = git@github.com:ilgyu-yi/claude-eng-shell.git
+[submodule "claude-res-shell"]
+	path = claude-res-shell
+	url = git@github.com:ilgyu-yi/claude-res-shell.git
